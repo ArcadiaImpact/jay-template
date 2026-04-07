@@ -25,7 +25,7 @@ uv run ruff check && uv run ruff format --check && uv run mypy .
 Each evaluation lives in its own directory under `src/` and is registered via
 entry points in `pyproject.toml`. Tests go in `tests/<eval_name>/`.
 
-```
+```text
 src/
   <eval_name>/          # Your evaluation
     __init__.py         # Exports task function(s)

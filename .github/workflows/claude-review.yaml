@@ -578,4 +578,3 @@ jobs:
             } else {
               console.log('SUMMARY.md exists but is empty');
             }
-
