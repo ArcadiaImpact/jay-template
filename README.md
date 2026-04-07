@@ -83,7 +83,45 @@ and tool-use scoring. Similar to evaluations like GAIA.
 - **Automated quality checks** — pre-commit hooks and CI for ruff, mypy,
   and pytest
 - **Managed file sync** — template updates are synced automatically via
-  GitHub Actions (see [MANAGED_FILES.md](MANAGED_FILES.md))
+  GitHub Actions with three-way merging to preserve your customizations
+  (see [MANAGED_FILES.md](MANAGED_FILES.md))
+
+## CI workflows
+
+The template includes several GitHub Actions workflows that run
+automatically.
+
+### Standard checks (always active)
+
+- **Checks** (`checks.yml`) — runs ruff, mypy, pytest, and POSIX code
+  checks on every push and PR
+- **Markdown Lint** (`markdown-lint.yml`) — lints markdown files on PRs
+- **Lint Evaluation** (`lint-new-evals.yml`) — checks evaluation code for
+  POSIX-specific patterns on PRs
+- **PR Template Check** (`pr-template-check.yml`) — verifies PRs include
+  the required template checklist
+- **Sync Template** (`sync-template.yml`) — weekly sync of managed files
+  from the upstream template (skips inactive repos)
+
+### Claude-powered workflows (require `ANTHROPIC_ROLE_ARN`)
+
+These workflows use Claude to automate code review and issue resolution.
+To enable them, add the `ANTHROPIC_ROLE_ARN` secret to your repository
+settings. Without it, these workflows are skipped.
+
+At time of writing, each Claude review costs roughly **$1** using
+Claude Opus 4.6 ($5/$25 per million tokens input/output).
+
+- **Claude Code Review** (`claude-review.yaml`) — automatically reviews
+  PRs when opened or updated, and on `/review` comments. Posts a
+  detailed review comment checking against the evaluation standards in
+  EVALUATION_CHECKLIST.md and BEST_PRACTICES.md.
+- **Claude Fix Tests** (`claude-fix-tests.yaml`) — triggered when a
+  reviewer requests changes. Analyses failing CI runs and pushes fixes
+  directly to the PR branch.
+- **Claude Issue Solver** (`claude-issue-solver.yaml`) — triggered by
+  commenting `/claude` on an issue. Creates a PR that implements the
+  requested changes.
 
 ## Documentation
 
