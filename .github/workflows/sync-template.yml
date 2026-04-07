@@ -13,7 +13,7 @@ permissions:
 jobs:
   check-activity:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    if: github.repository != 'ArcadiaImpact/inspect-evals-template'
     outputs:
       is_active: ${{ steps.activity.outputs.is_active }}
     steps:
@@ -101,23 +101,25 @@ jobs:
             if git cat-file -e "template/main:$file" 2>/dev/null; then
               mkdir -p "$(dirname "$file")"
 
-              if [ -n "$base_sha" ] && git cat-file -e "$base_sha:$file" 2>/dev/null && [ -f "$file" ]; then
-                # Three-way merge: base (last sync) vs ours (current) vs theirs (new template)
-                git show "$base_sha:$file" > /tmp/sync_base
-                cp "$file" /tmp/sync_ours
-                git show "template/main:$file" > /tmp/sync_theirs
+              git show "template/main:$file" > /tmp/sync_theirs
 
-                if git merge-file /tmp/sync_ours /tmp/sync_base /tmp/sync_theirs; then
-                  cp /tmp/sync_ours "$file"
+              if [ -n "$base_sha" ] && git cat-file -e "$base_sha:$file" 2>/dev/null && [ -f "$file" ]; then
+                git show "$base_sha:$file" > /tmp/sync_base
+                merge_exit=0
+                bash tools/sync_merge_file.sh /tmp/sync_base "$file" /tmp/sync_theirs /tmp/sync_out || merge_exit=$?
+
+                if [ "$merge_exit" -eq 0 ]; then
+                  cp /tmp/sync_out "$file"
                   merged_clean="$merged_clean\n- \`$file\`"
-                else
-                  # Conflicts — copy with conflict markers for PR review
-                  cp /tmp/sync_ours "$file"
+                elif [ "$merge_exit" -eq 1 ]; then
+                  cp /tmp/sync_out "$file"
                   conflicts="$conflicts\n- \`$file\`"
+                else
+                  cp /tmp/sync_theirs "$file"
+                  overwritten="$overwritten\n- \`$file\`"
                 fi
               else
-                # No base version or file doesn't exist locally — hard overwrite
-                git show "template/main:$file" > "$file"
+                cp /tmp/sync_theirs "$file"
                 overwritten="$overwritten\n- \`$file\`"
               fi
               git add "$file"

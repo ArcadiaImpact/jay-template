@@ -51,7 +51,9 @@ This means that you can add or remove files to this section as needed.
 - `src/examples/`
 - `tests/conftest.py`
 - `tests/examples/`
+- `tests/test_sync_merge.py`
 - `tools/check_posix_code.py`
+- `tools/sync_merge_file.sh`
 
 <!-- MANAGED_FILES_END -->
 
