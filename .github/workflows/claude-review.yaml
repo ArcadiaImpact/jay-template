@@ -475,7 +475,7 @@ jobs:
         with:
           use_bedrock: ${{ needs.check-secrets.outputs.auth_method == 'bedrock' }}
           anthropic_api_key: ${{ needs.check-secrets.outputs.auth_method == 'api_key' && secrets.ANTHROPIC_API_KEY || '' }}
-          model: ${{ needs.check-secrets.outputs.auth_method == 'bedrock' && steps.setup.outputs.claude_model || 'claude-opus-4-6-20250725' }}
+          model: ${{ needs.check-secrets.outputs.auth_method == 'bedrock' && steps.setup.outputs.claude_model || vars.CLAUDE_MODEL || 'claude-opus-4-6-20250725' }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           allowed_non_write_users: "*"
           allowed_bots: "claude-code-aisi[bot]"
