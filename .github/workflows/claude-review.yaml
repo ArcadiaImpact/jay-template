@@ -22,21 +22,23 @@ jobs:
   check-secrets:
     runs-on: ubuntu-latest
     outputs:
-      has_secrets: ${{ steps.check.outputs.has_secrets }}
+      auth_method: ${{ steps.check.outputs.auth_method }}
     steps:
       - name: Check for required secrets
         id: check
         run: |
-          if [ -z "${{ secrets.ANTHROPIC_ROLE_ARN }}" ]; then
-            echo "::warning::ANTHROPIC_ROLE_ARN secret not configured — Claude review will be skipped"
-            echo "has_secrets=false" >> $GITHUB_OUTPUT
+          if [ -n "${{ secrets.ANTHROPIC_ROLE_ARN }}" ]; then
+            echo "auth_method=bedrock" >> $GITHUB_OUTPUT
+          elif [ -n "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "auth_method=api_key" >> $GITHUB_OUTPUT
           else
-            echo "has_secrets=true" >> $GITHUB_OUTPUT
+            echo "::warning::Neither ANTHROPIC_ROLE_ARN nor ANTHROPIC_API_KEY is configured — Claude review will be skipped"
+            echo "auth_method=none" >> $GITHUB_OUTPUT
           fi
 
   review:
     needs: check-secrets
-    if: needs.check-secrets.outputs.has_secrets == 'true'
+    if: needs.check-secrets.outputs.auth_method != 'none'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -248,8 +250,10 @@ jobs:
           && steps.rate-limit.outputs.rate_limited != 'true'
         run: echo "proceed=true" >> $GITHUB_OUTPUT
 
-      - name: Setup
-        if: steps.gate.outputs.proceed == 'true'
+      - name: Setup (Bedrock)
+        if: >-
+          steps.gate.outputs.proceed == 'true'
+          && needs.check-secrets.outputs.auth_method == 'bedrock'
         id: setup
         uses: ./.github/actions/claude-setup
         with:
@@ -469,7 +473,9 @@ jobs:
         id: claude-code
         uses: anthropics/claude-code-action@v1
         with:
-          use_bedrock: true
+          use_bedrock: ${{ needs.check-secrets.outputs.auth_method == 'bedrock' }}
+          anthropic_api_key: ${{ needs.check-secrets.outputs.auth_method == 'api_key' && secrets.ANTHROPIC_API_KEY || '' }}
+          model: ${{ needs.check-secrets.outputs.auth_method == 'bedrock' && steps.setup.outputs.claude_model || 'claude-opus-4-6-20250725' }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           allowed_non_write_users: "*"
           allowed_bots: "claude-code-aisi[bot]"
@@ -520,7 +526,7 @@ jobs:
               - Never be dismissive or condescending. Frame it as "I may be wrong, but looking at the code..." not "The reviewer is incorrect."
               - When in doubt, don't push back. The bar for contradicting a human reviewer is high: you must be confident they are obviously wrong.
           claude_args: |
-            --model ${{ steps.setup.outputs.claude_model }} --allowedTools "Bash(git diff *),Bash(git log *),View,GlobTool,GrepTool,Read,Write"
+            --allowedTools "Bash(git diff *),Bash(git log *),View,GlobTool,GrepTool,Read,Write"
           show_full_output: true
 
       - name: Hide Previous Claude Review Comments

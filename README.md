@@ -103,11 +103,18 @@ automatically.
 - **Sync Template** (`sync-template.yml`) — weekly sync of managed files
   from the upstream template (skips inactive repos)
 
-### Claude-powered workflows (require `ANTHROPIC_ROLE_ARN`)
+### Claude-powered workflows
 
 These workflows use Claude to automate code review and issue resolution.
-To enable them, add the `ANTHROPIC_ROLE_ARN` secret to your repository
-settings. Without it, these workflows are skipped.
+To enable them, add one of these secrets to your repository settings
+(Settings > Secrets and variables > Actions > Secrets):
+
+- **`ANTHROPIC_API_KEY`** — an Anthropic API key (recommended for most
+  users). Create one at <https://console.anthropic.com/settings/keys>.
+- **`ANTHROPIC_ROLE_ARN`** — an AWS IAM role ARN for Bedrock access via
+  OIDC (for organisations using AWS Bedrock).
+
+Without either secret, these workflows are skipped.
 
 At time of writing, each Claude review costs roughly **$1** using
 Claude Opus 4.6 ($5/$25 per million tokens input/output).
