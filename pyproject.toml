@@ -10,12 +10,10 @@ fallback_version = "0.0.0+unknown"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-# USER: Change to match your package name
-include = ["my_eval*"]
+include = ["examples*"]
 
 [tool.setuptools.package-data]
-# USER: Change to match your package name
-"my_eval" = ["eval.yaml"]
+"*" = ["eval.yaml"]
 
 [tool.ruff]
 extend-exclude = [
@@ -58,7 +56,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/{tests}/*" = ["PLR2004"]  # Allow magic numbers in tests
+"**/{tests,examples}/*" = ["PLR2004"]  # Allow magic numbers in tests and examples
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -94,9 +92,8 @@ strict_equality = true
 warn_redundant_casts = true
 warn_unused_configs = true
 
-# USER: Change module name to match your package
 [[tool.mypy.overrides]]
-module = ["my_eval.*"]
+module = ["examples.*"]
 warn_return_any = true
 disallow_untyped_defs = true
 disallow_any_generics = true
@@ -112,10 +109,9 @@ disable_error_code = "unused-ignore"
 module = ["datasets", "datasets.*"]
 ignore_missing_imports = true
 
-# USER: Change name, description, authors, URLs
 [project]
-name = "my-eval"
-description = "An Inspect AI evaluation"
+name = "inspect-eval-template"
+description = "Template for Inspect AI evaluations"
 authors = [{ name = "Your Name" }]
 readme = "README.md"
 requires-python = ">=3.11"
@@ -142,9 +138,7 @@ dependencies = [
 "Source Code" = "https://github.com/your-org/your-eval"
 "Issue Tracker" = "https://github.com/your-org/your-eval/issues"
 
-# USER: Change to match your package name
 [project.entry-points.inspect_ai]
-my_eval = "my_eval._registry"
 
 [dependency-groups]
 dev = [

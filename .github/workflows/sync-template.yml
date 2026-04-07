@@ -11,7 +11,40 @@ permissions:
   pull-requests: write
 
 jobs:
+  check-activity:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    outputs:
+      is_active: ${{ steps.activity.outputs.is_active }}
+    steps:
+      - name: Check for recent PR activity
+        id: activity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Skip activity check for manual triggers
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "is_active=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Check if any PRs were opened in the last 7 days
+          recent_prs=$(gh pr list \
+            --repo "${{ github.repository }}" \
+            --state all \
+            --search "created:>=$(date -d '7 days ago' +%Y-%m-%d)" \
+            --json number \
+            --jq 'length')
+          if [ "$recent_prs" -gt 0 ]; then
+            echo "Found $recent_prs PR(s) in the last 7 days — proceeding with sync"
+            echo "is_active=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No PRs in the last 7 days — skipping sync"
+            echo "is_active=false" >> "$GITHUB_OUTPUT"
+          fi
+
   sync:
+    needs: check-activity
+    if: needs.check-activity.outputs.is_active == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -58,15 +91,42 @@ jobs:
           git checkout -b "$branch_name"
 
           template_version=$(git show template/main:.template-version 2>/dev/null || echo "unknown")
+          base_sha=$(cat .template-sync-sha 2>/dev/null || echo "")
+
+          merged_clean=""
+          conflicts=""
+          overwritten=""
 
           for file in ${{ steps.managed.outputs.files }}; do
             if git cat-file -e "template/main:$file" 2>/dev/null; then
-              # Ensure directory exists
               mkdir -p "$(dirname "$file")"
-              git show "template/main:$file" > "$file"
+
+              if [ -n "$base_sha" ] && git cat-file -e "$base_sha:$file" 2>/dev/null && [ -f "$file" ]; then
+                # Three-way merge: base (last sync) vs ours (current) vs theirs (new template)
+                git show "$base_sha:$file" > /tmp/sync_base
+                cp "$file" /tmp/sync_ours
+                git show "template/main:$file" > /tmp/sync_theirs
+
+                if git merge-file /tmp/sync_ours /tmp/sync_base /tmp/sync_theirs; then
+                  cp /tmp/sync_ours "$file"
+                  merged_clean="$merged_clean\n- \`$file\`"
+                else
+                  # Conflicts — copy with conflict markers for PR review
+                  cp /tmp/sync_ours "$file"
+                  conflicts="$conflicts\n- \`$file\`"
+                fi
+              else
+                # No base version or file doesn't exist locally — hard overwrite
+                git show "template/main:$file" > "$file"
+                overwritten="$overwritten\n- \`$file\`"
+              fi
               git add "$file"
             fi
           done
+
+          # Track which template commit we synced from
+          git rev-parse template/main > .template-sync-sha
+          git add .template-sync-sha
 
           if git diff --cached --quiet; then
             echo "No changes to commit"
@@ -78,17 +138,23 @@ jobs:
           git commit -m "chore: sync managed files from template $template_version"
           git push origin "$branch_name"
 
+          # Build PR body
+          body="## Template Sync"
+          body="$body\n\nThis PR updates managed files from the [inspect-eval-template](https://github.com/ArcadiaImpact/inspect-eval-template)."
+          body="$body\n\n**Template version:** $template_version"
+
+          if [ -n "$conflicts" ]; then
+            body="$body\n\n### ⚠️ Files with merge conflicts (need manual resolution)\n$conflicts"
+          fi
+          if [ -n "$merged_clean" ]; then
+            body="$body\n\n### Files merged (user customizations preserved)\n$merged_clean"
+          fi
+          if [ -n "$overwritten" ]; then
+            body="$body\n\n### Files overwritten (no previous sync baseline)\n$overwritten"
+          fi
+
+          body="$body\n\nManaged files are listed in [MANAGED_FILES.md](MANAGED_FILES.md)."
+
           gh pr create \
             --title "chore: sync managed files from template ($template_version)" \
-            --body "$(cat <<'EOF'
-          ## Template Sync
-
-          This PR updates managed files from the [inspect-eval-template](https://github.com/ArcadiaImpact/inspect-eval-template).
-
-          **Template version:** $template_version
-
-          Review the changes below. Managed files are listed in [MANAGED_FILES.md](MANAGED_FILES.md).
-
-          If you have local customizations to any managed files, resolve conflicts carefully.
-          EOF
-          )"
+            --body "$(echo -e "$body")"

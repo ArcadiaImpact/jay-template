@@ -4,7 +4,7 @@ This repository separates files into **managed** and **user-owned** categories.
 
 ## What are managed files?
 
-Managed files are maintained by the template maintainers and may be updated via the [sync mechanism](#sync-mechanism). They contain CI workflows, quality standards, linter configs, Claude skills, and shared tooling. You should not edit these files — your changes will be overwritten when the template syncs.
+Managed files are maintained by the template maintainers and may be updated via the [sync mechanism](#sync-mechanism). They contain CI workflows, quality standards, linter configs, Claude skills, and shared tooling. You can customize managed files if needed — the sync mechanism uses three-way merging to preserve your changes when they don't conflict with template updates.
 
 ## What are user-owned files?
 
@@ -12,9 +12,11 @@ User-owned files are yours to create, edit, and maintain. They contain your eval
 
 ## Managed file list
 
+This list of files is directly referenced by the sync-template.yml workflow.
+This means that you can add or remove files to this section as needed.
+
 <!-- MANAGED_FILES_START -->
 
-- `.claude/settings.json`
 - `.claude/skills/check-trajectories-workflow/SKILL.md`
 - `.claude/skills/ci-maintenance-workflow/SKILL.md`
 - `.claude/skills/create-eval/SKILL.md`
@@ -37,6 +39,7 @@ User-owned files are yours to create, edit, and maintain. They contain your eval
 - `.github/workflows/sync-template.yml`
 - `.markdownlint.yaml`
 - `.pre-commit-config.yaml`
+- `.template-sync-sha`
 - `.template-version`
 - `AGENTS.md`
 - `BEST_PRACTICES.md`
@@ -63,26 +66,29 @@ These are yours — the sync mechanism will never modify them:
 - `README.md` — your evaluation's documentation
 - `pyproject.toml` — your project configuration (tool configs are managed, but `[project]` and `[project.entry-points]` sections are yours)
 - `agent_artefacts/` — runtime artefacts from agent workflows
-- `LICENSE` — your chosen license
+- `LICENSE` — your chosen license. By default, the MIT license will be copied over, but this can be altered by you at any time.
 
 ## Sync mechanism
 
 The `.github/workflows/sync-template.yml` workflow runs weekly (or on manual trigger) and:
 
-1. Fetches the latest template from the upstream repository
-2. Compares only managed files (listed above) with the upstream versions
-3. Opens a PR if any managed files have changed
-4. Your user-owned files are never touched
+1. Checks if the repository has had any PR activity in the last 7 days (skips inactive repos)
+2. Fetches the latest template from the upstream repository
+3. For each managed file, performs a **three-way merge** using the last-synced template commit as the base
+4. Opens a PR if any managed files have changed
+5. Your user-owned files are never touched
 
-To manually trigger a sync, go to Actions > Sync Template Updates > Run workflow.
+The three-way merge means that if you've customized a managed file and the template has changed a different part, both changes are preserved automatically. If both changed the same lines, the PR will contain conflict markers for you to resolve.
+
+To manually trigger a sync, go to Actions > Sync Template Updates > Run workflow. Manual triggers always run, regardless of repository activity.
 
 ## What if I need to customize a managed file?
 
 If you need to customize a managed file (e.g., add a custom ruff rule):
 
-1. Make your change locally
-2. When the sync PR arrives, review it carefully — your customization will be shown as a conflict
-3. Resolve the conflict by keeping your customization where needed
+1. Make your change locally — the sync mechanism will preserve it
+2. When the next sync PR arrives, your customization is automatically kept if it doesn't conflict with template changes
+3. If there is a conflict (you and the template changed the same lines), resolve it in the PR
 4. Consider opening an issue on the template repo if your customization would benefit all users
 
 ## Template version
