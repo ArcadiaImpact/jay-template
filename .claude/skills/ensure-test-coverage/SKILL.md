@@ -1,0 +1,254 @@
+# MANAGED FILE - Do not edit. Updates pulled from template. See MANAGED_FILES.md
+---
+name: ensure-test-coverage
+description: Ensure test coverage for a single evaluation - both reviewing existing tests and creating missing ones. Analyzes testable components, checks tests against repository conventions, reports coverage gaps, and creates or improves tests. Use when user asks to check/review/create/add/ensure tests for an eval. Use whenever you are asked to review an evaluation that contains tests, or whenever you need to write a suite of tests. Do NOT use for fixing a specific failing CI test (use ci-maintenance-workflow instead).
+---
+
+# Ensure Test Coverage
+
+Analyze a single evaluation's test coverage against repository testing conventions. This skill can both **review** existing tests and **create** missing ones.
+
+## Expected Arguments
+
+When invoked, this skill expects:
+
+- **eval_name** (required): The name of one or more evaluations to check (e.g., `gpqa`, `healthbench`)
+
+If not provided, ask the user.
+
+## Workflow
+
+### Phase 1: Discover Testable Components
+
+Analyze the eval's source code in `src/<eval_name>/` to build a complete inventory of what needs testing.
+
+#### 1.1 Scan for decorated functions
+
+Use AST analysis or grep to find all functions decorated with:
+
+- `@task` - Task entry points (and their parameters/variants)
+- `@solver` - Custom solvers
+- `@scorer` - Custom scorers
+- `@tool` - Custom tools
+
+For each, record: function name, file path, line number, parameters.
+
+#### 1.2 Scan for dataset patterns
+
+Look for:
+
+- `record_to_sample` functions (named exactly or as a lambda/callable passed to `hf_dataset`/`csv_dataset`/`json_dataset`)
+- `hf_dataset()` or `load_dataset()` calls (indicates HuggingFace datasets)
+- `csv_dataset()` or `json_dataset()` calls
+- Dataset URLs or paths (for understanding data sources)
+
+#### 1.3 Scan for sandbox usage
+
+Look for:
+
+- `compose.yaml` or `docker-compose.yaml` files in the eval's `data/` directory
+- `sandbox()` calls in source code
+- `SandboxEnvironmentSpec` references
+
+#### 1.4 Scan for utility functions
+
+Look for non-trivial helper functions that contain meaningful logic (not just thin wrappers). Functions with:
+
+- Complex branching (if/elif chains)
+- Data transformations
+- String parsing/formatting
+- Score calculations
+- File I/O operations
+
+#### 1.5 Identify task variants
+
+Check if the eval has multiple `@task` functions or a single task with parameters that create meaningfully different variants (e.g., different subsets, different Docker environments, different scorers).
+
+### Phase 2: Run Autolint and Measure Coverage
+
+#### 2.1 Run autolint
+
+Run all autolint checks in one command to get a baseline of structural test coverage:
+
+```bash
+uv run python tools/run_autolint.py <eval_name>
+```
+
+This checks: `tests_exist`, `tests_init`, `e2e_test`, `record_to_sample_test`, `custom_solver_tests`, `custom_scorer_tests`, `custom_tool_tests` (plus non-test checks). You do not need to report to the user specific details of this beyond what the autolint tool itself tells them.
+
+If autolint reports failures, those become Priority 1 items to fix in Phase 4.
+
+#### 2.2 Measure line coverage with pytest-cov
+
+Run `pytest-cov` to get line-level coverage percentages. Include `--runslow` to run slow tests — they often exercise significantly more code:
+
+```bash
+uv run pytest tests/<eval_name>/ --cov=src/<eval_name> --cov-report=term-missing -q --runslow
+```
+
+This shows per-file coverage and which specific lines are missed. Record:
+
+- Overall coverage percentage
+- Per-file coverage percentages
+- Which lines are missed (the `Missing` column)
+
+Read the source code for missed lines to understand what they do. Categorize them as:
+
+- **Testable**: Logic that can be exercised with unit tests or mocked E2E tests (branches, calculations, parsing, error handling)
+- **Requires LLM/sandbox**: Lines that only run with a real model response or Docker container (acceptable to miss in fast tests)
+- **Dead code or error handlers**: Defensive code that's hard to trigger (lower priority)
+
+**There is no fixed coverage threshold.** Instead, use judgment: all major branches and behaviors should have tests. Focus on whether important logic paths are exercised, not on hitting a number. When evaluating gaps, ask: "If this code path broke, would we catch it?" If the answer is no and the path contains meaningful logic (not just framework glue), it's a gap worth addressing. It is entirely plausible that some decently large gaps include the same code that is checked elsewhere, but if so, this should be justified to the user. Do not assume a gap is fine because testing it would be difficult - that likely indicates a gap in our ability to mock relevant entities for testing. Let the user decide what's worth doing.
+
+When evaluating gaps, ask: "If this code path broke, would we catch it?" If the answer is no and the path contains meaningful logic (not just framework glue or duplicated code that is exercised elsewhere), it's a gap worth addressing. If the gap involves duplicated code that is addressed elsewhere, consider whether it can be refactored away without harming readability / maintainability too much. If so, recommend this to the user.
+
+#### 2.3 Evaluate test quality (beyond autolint and coverage)
+
+Autolint checks are shallow (function name present in test files). Coverage measures quantity, not quality. This step evaluates whether tests actually **test the right things**. Read each test file and check:
+
+**Scorer tests** - the most common quality gap:
+
+- Non-trivial scorers must test actual scoring logic with real inputs, not just `isinstance(scorer, Scorer)` type checks
+- Tests should verify both CORRECT and INCORRECT outcomes
+- Failure paths should return INCORRECT with an explanatory message, not crash
+- Trivial wrappers around Inspect primitives (e.g., `match()`, `includes()`) only need type-check
+- **Sandbox-based scorers** (using `sandbox().exec()`) must mock the sandbox and test with `ExecResult` objects — not just isinstance. See the "Sandbox-Based Scorer Test" pattern in Phase 4.
+- **LLM-graded scorers** (using `get_model()`) must mock the model and verify parsing of judge responses. See the "LLM-Graded Scorer Test" pattern in Phase 4.
+- **Multi-scorer reducers**: When a scorer uses `multi_scorer()` with a custom reducer, the reducer must be tested separately with constructed `Score` objects. See the "Multi-Scorer Reducer Test" pattern in Phase 4.
+- **Dispatch scorers**: When a scorer dispatches to different sub-scorers based on metadata, mock the dispatch key and verify the correct branch is taken.
+- **Parametrize test cases**: Use `@pytest.mark.parametrize` instead of writing many near-identical test functions that differ only in input/expected values. If a test would need four or more parametrize arguments, prefer individual named tests for readability.
+
+**Solver tests** - similar quality gap to scorers:
+
+- Thin wrappers (just assembling `chain([system_message(...), generate()])` or wrapping `basic_agent`/`react()`) only need isinstance. If already exercised by E2E tests, the isinstance test can be omitted entirely.
+- Non-trivial solvers with branching logic (e.g., dispatching based on metadata, constructing different prompts, modifying state.tools) must test the actual branches — create a TaskState, run the solver with a mock generate, and assert state changes.
+- If a solver is already exercised by an E2E test that covers its logic paths, a standalone isinstance test is redundant and should be removed.
+- Solvers that use `sandbox().exec()` should be tested with mocked sandbox, same pattern as sandbox-based scorers.
+
+**Tool tests**:
+
+- Error cases should use `pytest.raises(ToolError)`, not just test the happy path
+- Sandbox tools should use the `@solver` + `state.metadata["test_passed"]` pattern (see Phase 4)
+
+**Dataset/record_to_sample tests**:
+
+- Tests should use a real example from the actual dataset, not fabricated data
+- Tests should verify `sample.id`, `sample.input`, `sample.target`, `sample.metadata`
+
+**E2E tests**:
+
+- Each meaningfully different task variant should have its own E2E test
+- "Meaningfully different" = different Docker environment, different scorer, different solver pipeline (NOT just different questions from the same dataset)
+
+**Pytest markers** (commonly missing or wrong):
+
+- `@pytest.mark.dataset_download` if test instantiates a dataset (including E2E tests)
+- `@pytest.mark.huggingface` for HF datasets -- do NOT implement manual `have_hf_token()` checks, the centralized conftest handles it
+- `@pytest.mark.docker` for sandbox tests (NOT `@pytest.mark.skip`)
+- `@pytest.mark.slow(<seconds>)` with actual observed duration for tests >10s
+
+### Phase 3: Report Coverage Gaps
+
+Present findings organized by priority:
+
+#### Priority 1 - Autolint failures
+
+These will block CI/review. List each failing autolint check.
+
+#### Priority 2 - Important untested logic
+
+Files with significant testable missed lines. For each, list the file, coverage %, what the missed lines do, and whether they contain important logic (branches, calculations, parsing).
+
+#### Priority 3 - Quality gaps
+
+Tests exist but don't meet quality standards:
+
+- Scorer tests that only check type (not CORRECT/INCORRECT logic)
+- Missing error path tests for tools
+- `record_to_sample` tests using fabricated data instead of real examples
+- Missing or wrong pytest markers
+- Missing E2E variant coverage
+- Large or important gaps in Pytest coverage
+
+### Phase 4: Create or Fix Tests (if requested)
+
+If the user asks to create or fix tests (not just review), proceed with the following.
+
+**Ask the user** what they want:
+
+- Create all missing tests
+- Fix specific coverage gaps
+- Only fix Priority 1 items (autolint failures)
+
+#### 4.1 Test file organization
+
+```text
+tests/<eval_name>/
+├── __init__.py                 # Always required
+├── test_<eval_name>.py         # For simple evals (single file is fine)
+├── test_e2e.py                 # For larger evals: E2E tests
+├── test_scorer.py              # For larger evals: scorer tests
+├── test_tools.py               # For larger evals: tool tests
+└── test_dataset.py             # For larger evals: dataset/record_to_sample tests
+```
+
+Use a single file for simple evals. Split into multiple files for evals with 3+ testable component types.
+
+#### 4.2 Test patterns
+
+For concrete test templates for each component type, see `references/test-patterns.md`. It covers:
+
+- **E2E tests** — basic and parameterized variants
+- **Scorer tests** — parametrized CORRECT/INCORRECT assertions
+- **Non-sandbox tool tests** — happy path + error handling
+- **Sandbox tool tests** — using `tests/utils/sandbox_tools.py` shared utilities
+- **Dataset / record_to_sample tests** — using real dataset examples
+- **HuggingFace dataset validation** — using `tests/utils/huggingface` assertions
+- **Solver tests** — type-checks for thin wrappers (reviewers reject over-testing; PR #1009, #1008)
+- **Mocking get_model()** — for evals that call `get_model()` at import time
+
+#### 4.3 Validation after creating tests
+
+After creating tests, run them and verify:
+
+```bash
+# Run the new tests
+uv run pytest tests/<eval_name>/
+
+# Run linting
+uv run ruff check tests/<eval_name>/
+uv run ruff format tests/<eval_name>/
+
+# Re-run autolint to verify all checks pass
+uv run python tools/run_autolint.py <eval_name>
+
+# Re-measure coverage
+uv run pytest tests/<eval_name>/ --cov=src/<eval_name> --cov-report=term-missing -q --runslow
+```
+
+Fix any failures before presenting results.
+
+### Phase 5: Present Results
+
+Show the user a summary:
+
+1. **Component inventory**: What testable components were found
+2. **Autolint results**: Pass/fail for each check (from `run_autolint.py` output)
+3. **Coverage**: Overall and per-file percentages, with missed line analysis
+4. **Quality gaps**: Issues found in Phase 2.3
+5. **Actions taken**: If tests were created/modified, list what was done
+6. **Remaining items**: Any gaps that require manual attention or user decision
+
+## Things NOT to Do
+
+- **Don't re-check what autolint checks**: Run autolint and report its results. Don't manually verify test existence, `__init__.py`, function name presence, etc.
+- **Don't over-test thin wrappers**: `isinstance(solver, Solver)` is sufficient for solvers that just wrap `basic_agent` or assemble Inspect built-ins. Reviewers explicitly reject over-testing these (PR #1009, #1008).
+- **Don't treat non-trivial components as wrappers**: Any solvers/scorers/tools with custom logic beyond wrapping Inspect built-ins do require testing for those portions. See the expanded scorer quality checklist in Phase 2.3 for specific guidance on sandbox-based, LLM-graded, dispatch, and reducer scorers.
+- **Don't use bare strings for TaskState model arg**: Always use `ModelName("mockllm/model")`, never `model="mockllm/model"` — the latter causes mypy `arg-type` errors.
+- **Don't access score attributes without None checks**: Always `assert score is not None` before `score.value`, and `assert score.explanation is not None` before `"text" in score.explanation`. Otherwise mypy reports `union-attr` errors.
+- **Don't add task API parameters for testability**: Mock `get_model()` instead. This approach has been explicitly rejected in review (PR #998).
+- **Don't test Inspect framework internals**: Only test the eval's custom logic, not Inspect's built-in behavior.
+- **Don't fabricate dataset examples**: Use real examples from the actual dataset for `record_to_sample` tests. This serves as both a test and documentation.
+- **Don't implement manual HF token checks**: The centralized conftest handles `@pytest.mark.huggingface` skip/retry logic. Do NOT add `have_hf_token()` or `can_access_gated_dataset()` functions (PR #987, #993).
+- **Don't guess pytest.mark.slow durations**: Derive from actual CI run data (ceiling of observed max). If you can't measure, add a TODO for the user to fill in after running locally.
+- **Don't run full evaluations for testing**: Only run unit tests. Full evals are slow and unnecessary for coverage checking.
