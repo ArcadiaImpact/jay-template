@@ -112,10 +112,12 @@ settings. Without it, these workflows are skipped.
 At time of writing, each Claude review costs roughly **$1** using
 Claude Opus 4.6 ($5/$25 per million tokens input/output).
 
-- **Claude Code Review** (`claude-review.yaml`) — automatically reviews
-  PRs when opened or updated, and on `/review` comments. Posts a
-  detailed review comment checking against the evaluation standards in
-  EVALUATION_CHECKLIST.md and BEST_PRACTICES.md.
+- **Claude Code Review** (`claude-review.yaml`) — reviews PRs against
+  the evaluation standards in EVALUATION_CHECKLIST.md and
+  BEST_PRACTICES.md. By default, reviews run only when triggered with a
+  `/review` comment or manual dispatch. To enable automatic reviews on
+  every PR push, set the repository variable `AUTO_REVIEW_ALL_COMMITS`
+  to `true` (Settings > Variables > Actions).
 - **Claude Fix Tests** (`claude-fix-tests.yaml`) — triggered when a
   reviewer requests changes. Analyses failing CI runs and pushes fixes
   directly to the PR branch.
