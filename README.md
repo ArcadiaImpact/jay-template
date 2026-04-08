@@ -135,8 +135,6 @@ automatically.
 - **Markdown Lint** (`markdown-lint.yml`) — lints markdown files on PRs
 - **Lint Evaluation** (`lint-new-evals.yml`) — checks evaluation code for
   POSIX-specific patterns on PRs
-- **PR Template Check** (`pr-template-check.yml`) — verifies PRs include
-  the required template checklist
 - **Sync Template** (`sync-template.yml`) — weekly sync of managed files
   from the upstream template (skips inactive repos)
 
