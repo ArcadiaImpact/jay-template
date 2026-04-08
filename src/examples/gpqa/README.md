@@ -8,32 +8,71 @@ Adapted from the
 [inspect_evals implementation](https://github.com/UKGovernmentBEIS/inspect_evals/tree/main/src/inspect_evals/gpqa)
 and [simple-evals](https://github.com/openai/simple-evals/blob/main/gpqa_eval.py).
 
+<!-- Contributors: Automatically Generated -->
 Contributed by [@jjallaire](https://github.com/jjallaire)
+<!-- /Contributors: Automatically Generated -->
 
+<!-- Usage: Automatically Generated -->
 ## Usage
 
+First, install dependencies:
+
 ```bash
-# default (4 epochs, chain-of-thought)
-uv run inspect eval examples/gpqa_diamond --model openai/gpt-5-nano
-
-# 1 epoch, no chain-of-thought
-uv run inspect eval examples/gpqa_diamond --model openai/gpt-5-nano --epochs 1 -T cot=false
-
-# filter by domain
-uv run inspect eval examples/gpqa_diamond --model openai/gpt-5-nano -T high_level_domain=Biology
-
-# filter by subdomain
-uv run inspect eval examples/gpqa_diamond --model openai/gpt-5-nano -T subdomain=Genetics
+uv sync
 ```
 
+Then run evaluations:
+
+```bash
+uv run inspect eval examples.gpqa/gpqa_diamond --model openai/gpt-5-nano
+```
+
+You can also import tasks as Python objects:
+
+```python
+from inspect_ai import eval
+from examples.gpqa import gpqa_diamond
+eval(gpqa_diamond)
+```
+
+After running evaluations, view logs with:
+
+```bash
+uv run inspect view
+```
+
+If you don't want to specify `--model` each time, create a `.env` file:
+
+```bash
+INSPECT_EVAL_MODEL=anthropic/claude-opus-4-1-20250805
+ANTHROPIC_API_KEY=<anthropic-api-key>
+```
+<!-- /Usage: Automatically Generated -->
+
+<!-- Options: Automatically Generated -->
+## Options
+
+You can control a variety of options from the command line. For example:
+
+```bash
+uv run inspect eval examples.gpqa/gpqa_diamond --limit 10
+uv run inspect eval examples.gpqa/gpqa_diamond --max-connections 10
+uv run inspect eval examples.gpqa/gpqa_diamond --temperature 0.5
+```
+
+See `uv run inspect eval --help` for all available options.
+<!-- /Options: Automatically Generated -->
+
+<!-- Parameters: Automatically Generated -->
 ## Parameters
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `cot` | `bool` | `True` | Enable chain-of-thought reasoning |
-| `epochs` | `int` | `4` | Number of evaluation epochs |
-| `high_level_domain` | `str \| list[str] \| None` | `None` | Filter by domain: Biology, Chemistry, Physics |
-| `subdomain` | `str \| list[str] \| None` | `None` | Filter by subdomain (e.g. Genetics, Quantum Mechanics) |
+### `gpqa_diamond`
+
+- `cot` (bool): Whether to use chain-of-thought reasoning (default True). (default: `True`)
+- `epochs` (int): Number of epochs to run (default 4). (default: `4`)
+- `high_level_domain` (str | list[str] | None): Optional high-level domain(s) to filter by. One of "Biology", "Chemistry", or "Physics", or a list of these. If None, all domains are included. (default: `None`)
+- `subdomain` (str | list[str] | None): Optional subdomain(s) to filter by (e.g. "Genetics" or "Quantum Mechanics", or a list of these). If None, all subdomains are included. (default: `None`)
+<!-- /Parameters: Automatically Generated -->
 
 ## Dataset
 
