@@ -145,6 +145,15 @@ dependencies = [
 # should export your @task functions.
 # Note: examples are NOT registered -- only your evaluations under src/.
 [project.entry-points.inspect_ai]
+# Workflow test fixtures — used by the inspect_evals external-submission
+# workflow to exercise each validation / review branch. Not real benchmarks.
+workflow_tests_happy_path = "workflow_tests.happy_path"
+workflow_tests_desc_mismatch = "workflow_tests.desc_mismatch"
+workflow_tests_fuzzy_duplicate = "workflow_tests.fuzzy_duplicate"
+workflow_tests_no_runnability = "workflow_tests.no_runnability"
+workflow_tests_no_task_decorator = "workflow_tests.no_task_decorator"
+workflow_tests_sandbox_local = "workflow_tests.sandbox_local"
+workflow_tests_security_comment = "workflow_tests.security_comment"
 
 [dependency-groups]
 dev = [
